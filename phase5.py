@@ -17,6 +17,7 @@ BLUE = (0, 100, 255)
 GOLD = (255, 215, 0)
 GREEN = (0, 255, 0)
 WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
 
 
 class Piece:
@@ -198,7 +199,7 @@ class Board:
         return None
     
     def get_all_moves(self, color):
-        """Toate mutarile pentru AI - capturile obligatorii"""
+        """Toate mutările pentru AI - capturile sunt obligatorii"""
         moves = []
         has_cap = self.has_captures(color)
         for piece in self.get_all_pieces(color):
@@ -280,7 +281,7 @@ class Menu:
             self._draw_btn('easy', "Easy", mouse, GREEN)
             self._draw_btn('medium', "Medium", mouse, GOLD)
             self._draw_btn('hard', "Hard", mouse, RED)
-            self._draw_btn('back', "Back", mouse, GRAY)
+            self._draw_btn('back', "Back", mouse, BLACK)
         pygame.display.update()
     
     def _draw_btn(self, key, text, mouse, color):
@@ -323,6 +324,8 @@ class Game:
         self.position_history = []
         self.warning_message = ""
         self.warning_timer = 0
+        self.restart_btn = None
+        self.menu_btn = None
     
     def update(self):
         self.board.draw(self.win)
@@ -465,24 +468,60 @@ class Game:
         self.win.blit(small.render(f"GRAY: {self.board.black_left} ({self.board.black_kings}K)", True, GRAY), (10, 35))
         self.win.blit(small.render(f"No capture: {self.moves_without_capture}/20", True, WHITE), (10, 60))
         
-        # Warning message (must capture, etc.)
+        # Warning message
         if self.warning_timer > 0:
             self.warning_timer -= 1
             warning_font = pygame.font.Font(None, 42)
             warning_surface = warning_font.render(self.warning_message, True, (255, 100, 100))
             warning_rect = warning_surface.get_rect(center=(WIDTH // 2, HEIGHT - 50))
-            # Background pentru vizibilitate
+            # Background pt vizibilitate
             pygame.draw.rect(self.win, (0, 0, 0), warning_rect.inflate(20, 10))
             self.win.blit(warning_surface, warning_rect)
         
         # Draw/Winner
         draw = self.check_draw()
         winner = self.board.winner()
-        if draw:
-            self.win.blit(font.render(f"DRAW! ({draw})", True, GOLD), (WIDTH//2 - 150, HEIGHT//2))
-        elif winner:
-            txt = "YOU WIN!" if winner == RED else ("AI WINS!" if self.ai_mode else "GRAY WINS!")
-            self.win.blit(font.render(txt, True, winner), (WIDTH//2 - 80, HEIGHT//2))
+        if draw or winner:
+            # Overlay semi-transparent
+            overlay = pygame.Surface((WIDTH, HEIGHT))
+            overlay.set_alpha(180)
+            overlay.fill((0, 0, 0))
+            self.win.blit(overlay, (0, 0))
+            
+            # Mesaj rezultat
+            if draw:
+                msg = f"DRAW! ({draw})"
+                color = GOLD
+            else:
+                msg = "YOU WIN!" if winner == RED else ("AI WINS!" if self.ai_mode else "GRAY WINS!")
+                color = winner
+            
+            big_font = pygame.font.Font(None, 72)
+            msg_surface = big_font.render(msg, True, color)
+            self.win.blit(msg_surface, msg_surface.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50)))
+            
+            # Buton Restart
+            self.restart_btn = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 20, 200, 50)
+            mouse = pygame.mouse.get_pos()
+            hover = self.restart_btn.collidepoint(mouse)
+            pygame.draw.rect(self.win, GREEN if hover else GRAY, self.restart_btn, border_radius=10)
+            pygame.draw.rect(self.win, WHITE, self.restart_btn, 3, border_radius=10)
+            btn_text = font.render("RESTART", True, WHITE if hover else GREEN)
+            self.win.blit(btn_text, btn_text.get_rect(center=self.restart_btn.center))
+            
+            # Buton Menu
+            self.menu_btn = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 90, 200, 50)
+            hover_menu = self.menu_btn.collidepoint(mouse)
+            pygame.draw.rect(self.win, BLUE if hover_menu else GRAY, self.menu_btn, border_radius=10)
+            pygame.draw.rect(self.win, WHITE, self.menu_btn, 3, border_radius=10)
+            menu_text = font.render("MENU", True, WHITE if hover_menu else BLUE)
+            self.win.blit(menu_text, menu_text.get_rect(center=self.menu_btn.center))
+        else:
+            self.restart_btn = None
+            self.menu_btn = None
+    
+    def is_game_over(self):
+        return self.board.winner() is not None or self.check_draw() is not None
     
     def change_turn(self):
         self.position_history.append(self.get_board_state())
@@ -509,7 +548,7 @@ def main():
     in_menu = True
     
     print("\n" + "="*40)
-    print("CHECKERS - PHASE 5")
+    print("CHECKERS - PHASE 5 (Optimized)")
     print("="*40)
     print("Use the menu to select game mode!")
     
@@ -535,9 +574,23 @@ def main():
                             print("\n2 Player mode selected!")
                         print("\nInitial Board:")
                         game.board.print_ascii()
-                elif game and (game.turn == RED or not game.ai_mode):
-                    r, c = pygame.mouse.get_pos()[1] // SQUARE_SIZE, pygame.mouse.get_pos()[0] // SQUARE_SIZE
-                    game.select(r, c)
+                elif game:
+                    pos = pygame.mouse.get_pos()
+                    if game.is_game_over():
+                        if game.restart_btn and game.restart_btn.collidepoint(pos):
+                            # Restart
+                            game._init()
+                            print("\n" + "="*40)
+                            print("GAME RESTARTED!")
+                            print("="*40)
+                            print("\nInitial Board:")
+                            game.board.print_ascii()
+                        elif game.menu_btn and game.menu_btn.collidepoint(pos):
+                            in_menu = True
+                            menu = Menu(WIN)
+                    elif game.turn == RED or not game.ai_mode:
+                        r, c = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
+                        game.select(r, c)
             
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and not in_menu:
                 in_menu = True
